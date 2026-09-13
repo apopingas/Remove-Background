@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Eliminador de Fondo Gratis</title>
+  <title>Eliminador de Fondo</title>
   <style>
     * { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
     body { background: #0f172a; color: #f8fafc; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 20px; }
@@ -13,7 +13,7 @@
     input[type="file"] { display: none; }
     #status { margin-top: 15px; font-size: 0.9em; color: #94a3b8; font-weight: 500; }
     .result { display: none; margin-top: 20px; }
-    canvas { max-width: 100%; border-radius: 8px; background-image: linear-gradient(45deg, #334155 25%, transparent 25%), linear-gradient(-45deg, #334155 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #334155 75%), linear-gradient(-45deg, transparent 75%, #334155 75%); background-size: 20px 20px; background-position: 0 0, 0 10px, 10px -10px, -10px 0px; }
+    img { max-width: 100%; border-radius: 8px; background-image: linear-gradient(45deg, #334155 25%, transparent 25%), linear-gradient(-45deg, #334155 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #334155 75%), linear-gradient(-45deg, transparent 75%, #334155 75%); background-size: 20px 20px; background-position: 0 0, 0 10px, 10px -10px, -10px 0px; }
     .btn { background: #38bdf8; color: #0f172a; border: none; padding: 12px 20px; border-radius: 6px; font-weight: bold; cursor: pointer; margin-top: 15px; width: 100%; text-decoration: none; display: inline-block; }
     .btn:hover { background: #7dd3fc; }
   </style>
@@ -27,54 +27,21 @@
       <input type="file" id="fileInput" accept="image/*" />
     </div>
 
-    <div id="status">Cargando motor de IA... (Espera unos segundos)</div>
+    <div id="status">Selecciona una imagen para comenzar.</div>
 
     <div class="result" id="resultContainer">
-      <canvas id="outputCanvas"></canvas>
-      <a id="downloadBtn" class="btn" download="sin_fondo.png">Descargar PNG Transparente</a>
+      <img id="outputImg" alt="Sin fondo" />
+      <a id="downloadBtn" class="btn" download="imagen_sin_fondo.png">Descargar PNG Transparente</a>
     </div>
   </div>
 
-  <script type="module">
-    import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.6.0';
-
-    // Desactivar búsqueda de modelos locales para evitar fallos CORS
-    env.allowLocalModels = false;
-    env.useBrowserCache = true;
-
+  <script>
     const dropzone = document.getElementById('dropzone');
     const fileInput = document.getElementById('fileInput');
     const status = document.getElementById('status');
     const resultContainer = document.getElementById('resultContainer');
-    const outputCanvas = document.getElementById('outputCanvas');
+    const outputImg = document.getElementById('outputImg');
     const downloadBtn = document.getElementById('downloadBtn');
-
-    let segmenter = null;
-
-    // Inicializar el modelo
-    async function init() {
-      try {
-        status.innerText = "Cargando modelo de IA (RMBG)...";
-        segmenter = await pipeline('image-segmentation', 'Xenova/birefnet-general', {
-          quantized: true,
-        });
-        status.innerText = "¡IA Lista! Selecciona una imagen.";
-        status.style.color = "#10b981";
-      } catch (e) {
-        console.warn("Fallo al cargar BiRefNet, intentando modelo liviano secundario...", e);
-        try {
-          segmenter = await pipeline('image-segmentation', 'Xenova/rmbg-1.4');
-          status.innerText = "¡IA Lista! Selecciona una imagen.";
-          status.style.color = "#10b981";
-        } catch (err2) {
-          console.error("Error crítico:", err2);
-          status.innerText = "Error al cargar la IA. Revisa tu conexión a internet.";
-          status.style.color = "#ef4444";
-        }
-      }
-    }
-
-    init();
 
     dropzone.addEventListener('click', () => fileInput.click());
     fileInput.addEventListener('change', (e) => processImage(e.target.files[0]));
@@ -86,53 +53,73 @@
 
     async function processImage(file) {
       if (!file) return;
-      if (!segmenter) {
-        alert("La IA aún se está cargando, espera unos segundos por favor.");
-        return;
-      }
 
-      status.innerText = "Procesando imagen...";
+      status.innerText = "Procesando imagen con IA...";
       status.style.color = "#f59e0b";
       resultContainer.style.display = "none";
 
+      const formData = new FormData();
+      formData.append('image_file', file);
+
+      // Intento 1: Servidor API Ultra Rápido (Clipdrop / RMBG Engine)
       try {
-        const imgUrl = URL.createObjectURL(file);
+        const response = await fetch('https://clipdrop-api.co/remove-background/v1', {
+          method: 'POST',
+          headers: {
+            'x-api-key': 'd1b28741364a3a6bd430335028059e6631b67f1396a987d6e6bd0c2ef38f12cb8f343a4291888b50e3bbd9082ef58893'
+          },
+          body: formData,
+        });
+
+        if (response.ok) {
+          const blob = await response.blob();
+          showResult(blob);
+          return;
+        }
+      } catch (e) {
+        console.warn("Fallo servicio 1, intentando endpoint alternativo...", e);
+      }
+
+      // Intento 2: Fallback Servidor HF API directa
+      try {
+        const responseHF = await fetch('https://birefnet-birefnet.hf.space/api/predict', {
+          method: 'POST',
+          body: JSON.stringify({ data: [await fileToDataURL(file)] }),
+          headers: { 'Content-Type': 'application/json' }
+        });
         
-        // Ejecutar segmentación de fondo
-        const output = await segmenter(imgUrl);
-        const mask = output[0].mask;
-
-        const img = new Image();
-        img.onload = () => {
-          outputCanvas.width = img.width;
-          outputCanvas.height = img.height;
-          const ctx = outputCanvas.getContext('2d');
-          
-          // Dibujar la imagen original
-          ctx.drawImage(img, 0, 0);
-          const imgData = ctx.getImageData(0, 0, img.width, img.height);
-          
-          // Aplicar la máscara de transparencia
-          for (let i = 0; i < mask.data.length; i++) {
-            imgData.data[i * 4 + 3] = mask.data[i];
-          }
-          
-          ctx.putImageData(imgData, 0, 0);
-
-          const finalDataUrl = outputCanvas.toDataURL('image/png');
-          downloadBtn.href = finalDataUrl;
-
-          status.innerText = "¡Fondo eliminado correctamente!";
+        const data = await responseHF.json();
+        if (data && data.data && data.data[0]) {
+          outputImg.src = data.data[0];
+          downloadBtn.href = data.data[0];
+          status.innerText = "¡Fondo eliminado con éxito!";
           status.style.color = "#10b981";
           resultContainer.style.display = "block";
-        };
-        img.src = imgUrl;
-
-      } catch (error) {
-        console.error("Error al procesar:", error);
-        status.innerText = "Error al procesar la imagen.";
-        status.style.color = "#ef4444";
+          return;
+        }
+      } catch (err) {
+        console.error("Error en fallback:", err);
       }
+
+      status.innerText = "Error al procesar la imagen. Inténtalo de nuevo.";
+      status.style.color = "#ef4444";
+    }
+
+    function showResult(blob) {
+      const url = URL.createObjectURL(blob);
+      outputImg.src = url;
+      downloadBtn.href = url;
+      status.innerText = "¡Fondo eliminado con éxito!";
+      status.style.color = "#10b981";
+      resultContainer.style.display = "block";
+    }
+
+    function fileToDataURL(file) {
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (e) => resolve(e.target.result);
+        reader.readAsDataURL(file);
+      });
     }
   </script>
 </body>
