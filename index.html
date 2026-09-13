@@ -26,7 +26,7 @@
       <input type="file" id="fileInput" accept="image/*" />
     </div>
 
-    <div id="status">Cargando modelo...</div>
+    <div id="status">Cargando modelo de IA...</div>
 
     <div class="result" id="resultContainer">
       <canvas id="canvas"></canvas>
@@ -36,7 +36,11 @@
   </div>
 
   <script type="module">
-    import { pipeline } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.0-alpha.19';
+    import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2';
+
+    // Desactivar hilos locales para evitar bloqueos del navegador
+    env.allowLocalModels = false;
+    env.backends.onnx.wasm.numThreads = 1;
 
     const status = document.getElementById('status');
     const dropzone = document.getElementById('dropzone');
@@ -49,10 +53,14 @@
 
     async function init() {
       try {
-        pipe = await pipeline('image-segmentation', 'Xenova/modnet');
-        status.innerText = 'Listo. Selecciona una imagen.';
+        // Modelo estable optimizado para navegadores
+        pipe = await pipeline('image-segmentation', 'Xenova/bgr-small');
+        status.innerText = '¡IA Lista! Selecciona una imagen.';
+        status.style.color = '#4caf50';
       } catch (e) {
-        status.innerText = 'Error al cargar el modelo.';
+        console.error(e);
+        status.innerText = 'Error al cargar el modelo. Verifica tu conexión a internet o bloqueador de anuncios.';
+        status.style.color = '#f44336';
       }
     }
     init();
@@ -68,7 +76,8 @@
     async function process(file) {
       if (!file || !pipe) return;
 
-      status.innerText = 'Procesando...';
+      status.innerText = 'Procesando imagen...';
+      status.style.color = '#aaa';
       resultContainer.style.display = 'none';
 
       const url = URL.createObjectURL(file);
@@ -89,7 +98,8 @@
         ctx.putImageData(imgData, 0, 0);
 
         downloadBtn.href = canvas.toDataURL('image/png');
-        status.innerText = 'Completado.';
+        status.innerText = '¡Fondo eliminado!';
+        status.style.color = '#4caf50';
         resultContainer.style.display = 'block';
       };
       img.src = url;
