@@ -3,42 +3,42 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Mi Eliminador de Fondos Gratis</title>
+  <title>Eliminador de Fondo Ultra Rápido</title>
   <style>
     * { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
     body { background: #0f172a; color: #f8fafc; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 20px; }
-    .card { background: #1e293b; border-radius: 12px; padding: 30px; width: 100%; max-width: 500px; text-align: center; border: 1px solid #334155; }
-    .dropzone { border: 2px dashed #38bdf8; border-radius: 8px; padding: 40px 20px; cursor: pointer; background: rgba(56, 189, 248, 0.02); }
+    .card { background: #1e293b; border-radius: 12px; padding: 30px; width: 100%; max-width: 500px; text-align: center; border: 1px solid #334155; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
+    .dropzone { border: 2px dashed #38bdf8; border-radius: 8px; padding: 40px 20px; cursor: pointer; background: rgba(56, 189, 248, 0.02); transition: all 0.2s ease; }
     .dropzone:hover { background: rgba(56, 189, 248, 0.08); }
     input[type="file"] { display: none; }
-    #status { margin-top: 15px; font-size: 0.9em; color: #94a3b8; }
+    #status { margin-top: 15px; font-size: 0.9em; color: #94a3b8; font-weight: 500; }
     .result { display: none; margin-top: 20px; }
     img { max-width: 100%; border-radius: 8px; background-image: linear-gradient(45deg, #334155 25%, transparent 25%), linear-gradient(-45deg, #334155 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #334155 75%), linear-gradient(-45deg, transparent 75%, #334155 75%); background-size: 20px 20px; background-position: 0 0, 0 10px, 10px -10px, -10px 0px; }
     .btn { background: #38bdf8; color: #0f172a; border: none; padding: 12px 20px; border-radius: 6px; font-weight: bold; cursor: pointer; margin-top: 15px; width: 100%; text-decoration: none; display: inline-block; }
     .btn:hover { background: #7dd3fc; }
   </style>
+
+  <!-- Carga del motor de IA WebAssembly -->
   <script src="https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.4.5/dist/index.umd.js"></script>
 </head>
 <body>
 
   <div class="card">
-    <h2>Eliminador de Fondo</h2>
+    <h2>Eliminador de Fondo (IA Local)</h2>
     <div class="dropzone" id="dropzone">
       <span id="label">Haz clic o arrastra tu imagen aquí</span>
       <input type="file" id="fileInput" accept="image/*" />
     </div>
 
-    <div id="status">Selecciona una imagen para comenzar.</div>
+    <div id="status">Selecciona una imagen en formato JPG, PNG o WebP.</div>
 
     <div class="result" id="resultContainer">
-      <img id="outputImg" alt="Sin fondo" />
-      <a id="downloadBtn" class="btn" download="imagen_sin_fondo.png">Descargar PNG Transparente</a>
+      <img id="outputImg" alt="Imagen procesada sin fondo" />
+      <a id="downloadBtn" class="btn" download="sin_fondo.png">Descargar PNG Transparente</a>
     </div>
   </div>
 
-  <script type="module">
-    import { Client } from "https://cdn.jsdelivr.net/npm/@gradio/client/+esm";
-
+  <script>
     const dropzone = document.getElementById('dropzone');
     const fileInput = document.getElementById('fileInput');
     const status = document.getElementById('status');
@@ -47,53 +47,45 @@
     const downloadBtn = document.getElementById('downloadBtn');
 
     dropzone.addEventListener('click', () => fileInput.click());
-    fileInput.addEventListener('change', (e) => process(e.target.files[0]));
+    fileInput.addEventListener('change', (e) => processImage(e.target.files[0]));
     dropzone.addEventListener('dragover', (e) => e.preventDefault());
     dropzone.addEventListener('drop', (e) => {
       e.preventDefault();
-      if (e.dataTransfer.files.length) process(e.dataTransfer.files[0]);
+      if (e.dataTransfer.files.length) processImage(e.dataTransfer.files[0]);
     });
 
-    async function process(file) {
+    async function processImage(file) {
       if (!file) return;
 
-      status.innerText = "Procesando imagen con IA...";
+      status.innerText = "Procesando en tu navegador... (puede tardar unos segundos la primera vez)";
       status.style.color = "#f59e0b";
       resultContainer.style.display = "none";
 
-      // 1. Intento principal con la API de BiRefNet (Calidad ultra alta)
       try {
-        const app = await Client.connect("ZhengPeng7/BiRefNet");
-        const result = await app.predict("/predict", [file]);
+        // Ejecución directa del motor local indicando la ruta pública exacta de los recursos
+        const blob = await imglyRemoveBackground(file, {
+          publicPath: "https://cdn.jsdelivr.net/npm/@imgly/background-removal-data@1.4.5/dist/",
+          progress: (key, current, total) => {
+            if (total > 0) {
+              const percent = Math.round((current / total) * 100);
+              status.innerText = `Cargando motor de IA: ${percent}%`;
+            }
+          }
+        });
 
-        if (result && result.data && result.data[0]) {
-          const imgUrl = result.data[0].url;
-          showSuccess(imgUrl);
-          return;
-        }
-      } catch (err) {
-        console.warn("La API externa falló o está dormida, cambiando a motor local...", err);
-      }
+        const imageObjectURL = URL.createObjectURL(blob);
+        outputImg.src = imageObjectURL;
+        downloadBtn.href = imageObjectURL;
 
-      // 2. Fallback de emergencia local (@imgly) -> NUNCA FALLA
-      try {
-        status.innerText = "Procesando localmente en tu dispositivo...";
-        const blob = await imglyRemoveBackground(file);
-        const localUrl = URL.createObjectURL(blob);
-        showSuccess(localUrl);
-      } catch (fallbackErr) {
-        console.error(fallbackErr);
-        status.innerText = "Error inesperado al procesar la imagen.";
+        status.innerText = "¡Fondo eliminado correctamente!";
+        status.style.color = "#10b981";
+        resultContainer.style.display = "block";
+
+      } catch (error) {
+        console.error("Error al procesar:", error);
+        status.innerText = "Error al procesar. Asegúrate de ejecutar este archivo desde un servidor web local (Live Server) o en Vercel/GitHub Pages.";
         status.style.color = "#ef4444";
       }
-    }
-
-    function showSuccess(url) {
-      outputImg.src = url;
-      downloadBtn.href = url;
-      status.innerText = "¡Fondo eliminado con éxito!";
-      status.style.color = "#10b981";
-      resultContainer.style.display = "block";
     }
   </script>
 </body>
