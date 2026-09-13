@@ -3,45 +3,44 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Eliminador de Fondo Gratis</title>
+  <title>Mi Eliminador de Fondos Gratis</title>
   <style>
     * { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
-    body { background: #121212; color: #fff; display: flex; flex-direction: column; align-items: center; padding: 20px; margin: 0; min-height: 100vh; }
-    .container { width: 100%; max-width: 500px; text-align: center; margin-top: 40px; }
-    .dropzone { border: 2px dashed #444; border-radius: 12px; padding: 40px 20px; cursor: pointer; background: #1e1e1e; transition: 0.2s; }
-    .dropzone:hover { border-color: #0066cc; background: #252525; }
+    body { background: #0f172a; color: #f8fafc; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 20px; }
+    .card { background: #1e293b; border-radius: 12px; padding: 30px; width: 100%; max-width: 500px; text-align: center; border: 1px solid #334155; }
+    .dropzone { border: 2px dashed #38bdf8; border-radius: 8px; padding: 40px 20px; cursor: pointer; background: rgba(56, 189, 248, 0.02); }
+    .dropzone:hover { background: rgba(56, 189, 248, 0.08); }
     input[type="file"] { display: none; }
-    #status { margin: 20px 0; font-size: 15px; color: #4caf50; font-weight: 500; }
+    #status { margin-top: 15px; font-size: 0.9em; color: #94a3b8; }
     .result { display: none; margin-top: 20px; }
-    img.output { max-width: 100%; border-radius: 8px; background: repeating-conic-gradient(#808080 0% 25%, #fff 0% 50%) 50% / 16px 16px; }
-    .btn { display: inline-block; background: #0066cc; color: #fff; border: none; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: bold; margin-top: 15px; cursor: pointer; width: 100%; }
-    .btn:hover { background: #0052a3; }
+    img { max-width: 100%; border-radius: 8px; background-image: linear-gradient(45deg, #334155 25%, transparent 25%), linear-gradient(-45deg, #334155 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #334155 75%), linear-gradient(-45deg, transparent 75%, #334155 75%); background-size: 20px 20px; background-position: 0 0, 0 10px, 10px -10px, -10px 0px; }
+    .btn { background: #38bdf8; color: #0f172a; border: none; padding: 12px 20px; border-radius: 6px; font-weight: bold; cursor: pointer; margin-top: 15px; width: 100%; text-decoration: none; display: inline-block; }
+    .btn:hover { background: #7dd3fc; }
   </style>
-  <script src="https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.4.5/dist/index.umd.js"></script>
 </head>
 <body>
 
-  <div class="container">
-    <h2>Quitar Fondo Gratis</h2>
-    
+  <div class="card">
+    <h2>Eliminador de Fondo</h2>
     <div class="dropzone" id="dropzone">
       <span id="label">Haz clic o arrastra tu imagen aquí</span>
       <input type="file" id="fileInput" accept="image/*" />
     </div>
 
-    <div id="status">Sistema listo. Selecciona una imagen.</div>
+    <div id="status">Selecciona una imagen para comenzar.</div>
 
     <div class="result" id="resultContainer">
-      <img id="outputImg" class="output" alt="Resultado" />
-      <br />
-      <a id="downloadBtn" class="btn" download="sin_fondo.png">Descargar PNG Transparente</a>
+      <img id="outputImg" alt="Sin fondo" />
+      <a id="downloadBtn" class="btn" download="imagen_sin_fondo.png">Descargar PNG Transparente</a>
     </div>
   </div>
 
-  <script>
-    const status = document.getElementById('status');
+  <script type="module">
+    import { Client } from "https://cdn.jsdelivr.net/npm/@gradio/client/+esm";
+
     const dropzone = document.getElementById('dropzone');
     const fileInput = document.getElementById('fileInput');
+    const status = document.getElementById('status');
     const resultContainer = document.getElementById('resultContainer');
     const outputImg = document.getElementById('outputImg');
     const downloadBtn = document.getElementById('downloadBtn');
@@ -57,25 +56,28 @@
     async function process(file) {
       if (!file) return;
 
-      status.innerText = 'Procesando imagen (esto toma unos segundos)...';
-      status.style.color = '#ff9800';
-      resultContainer.style.display = 'none';
+      status.innerText = "Procesando con la IA en la nube...";
+      status.style.color = "#f59e0b";
+      resultContainer.style.display = "none";
 
       try {
-        // Remoción de fondo usando @imgly/background-removal
-        const blob = await imglyRemoveBackground(file);
-        const url = URL.createObjectURL(blob);
+        // Conexión gratuita a la API de Hugging Face
+        const app = await Client.connect("not-lain/background-removal");
+        const result = await app.predict("/png", [file]);
 
-        outputImg.src = url;
-        downloadBtn.href = url;
+        if (result && result.data && result.data[0]) {
+          const imgUrl = result.data[0].url;
+          outputImg.src = imgUrl;
+          downloadBtn.href = imgUrl;
 
-        status.innerText = '¡Fondo eliminado con éxito!';
-        status.style.color = '#4caf50';
-        resultContainer.style.display = 'block';
+          status.innerText = "¡Fondo eliminado con éxito!";
+          status.style.color = "#10b981";
+          resultContainer.style.display = "block";
+        }
       } catch (error) {
         console.error(error);
-        status.innerText = 'Error al procesar la imagen. Intenta con otra foto.';
-        status.style.color = '#f44336';
+        status.innerText = "Error al procesar la imagen. Intenta de nuevo.";
+        status.style.color = "#ef4444";
       }
     }
   </script>
