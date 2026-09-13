@@ -17,6 +17,7 @@
     .btn { background: #38bdf8; color: #0f172a; border: none; padding: 12px 20px; border-radius: 6px; font-weight: bold; cursor: pointer; margin-top: 15px; width: 100%; text-decoration: none; display: inline-block; }
     .btn:hover { background: #7dd3fc; }
   </style>
+  <script src="https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.4.5/dist/index.umd.js"></script>
 </head>
 <body>
 
@@ -56,29 +57,43 @@
     async function process(file) {
       if (!file) return;
 
-      status.innerText = "Procesando con la IA en la nube...";
+      status.innerText = "Procesando imagen con IA...";
       status.style.color = "#f59e0b";
       resultContainer.style.display = "none";
 
+      // 1. Intento principal con la API de BiRefNet (Calidad ultra alta)
       try {
-        // Conexión gratuita a la API de Hugging Face
-        const app = await Client.connect("not-lain/background-removal");
-        const result = await app.predict("/png", [file]);
+        const app = await Client.connect("ZhengPeng7/BiRefNet");
+        const result = await app.predict("/predict", [file]);
 
         if (result && result.data && result.data[0]) {
           const imgUrl = result.data[0].url;
-          outputImg.src = imgUrl;
-          downloadBtn.href = imgUrl;
-
-          status.innerText = "¡Fondo eliminado con éxito!";
-          status.style.color = "#10b981";
-          resultContainer.style.display = "block";
+          showSuccess(imgUrl);
+          return;
         }
-      } catch (error) {
-        console.error(error);
-        status.innerText = "Error al procesar la imagen. Intenta de nuevo.";
+      } catch (err) {
+        console.warn("La API externa falló o está dormida, cambiando a motor local...", err);
+      }
+
+      // 2. Fallback de emergencia local (@imgly) -> NUNCA FALLA
+      try {
+        status.innerText = "Procesando localmente en tu dispositivo...";
+        const blob = await imglyRemoveBackground(file);
+        const localUrl = URL.createObjectURL(blob);
+        showSuccess(localUrl);
+      } catch (fallbackErr) {
+        console.error(fallbackErr);
+        status.innerText = "Error inesperado al procesar la imagen.";
         status.style.color = "#ef4444";
       }
+    }
+
+    function showSuccess(url) {
+      outputImg.src = url;
+      downloadBtn.href = url;
+      status.innerText = "¡Fondo eliminado con éxito!";
+      status.style.color = "#10b981";
+      resultContainer.style.display = "block";
     }
   </script>
 </body>
