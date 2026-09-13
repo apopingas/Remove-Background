@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Eliminador de Fondo Ultra Rápido</title>
+  <title>Eliminador de Fondo Gratis</title>
   <style>
     * { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
     body { background: #0f172a; color: #f8fafc; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 20px; }
@@ -13,38 +13,68 @@
     input[type="file"] { display: none; }
     #status { margin-top: 15px; font-size: 0.9em; color: #94a3b8; font-weight: 500; }
     .result { display: none; margin-top: 20px; }
-    img { max-width: 100%; border-radius: 8px; background-image: linear-gradient(45deg, #334155 25%, transparent 25%), linear-gradient(-45deg, #334155 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #334155 75%), linear-gradient(-45deg, transparent 75%, #334155 75%); background-size: 20px 20px; background-position: 0 0, 0 10px, 10px -10px, -10px 0px; }
+    canvas { max-width: 100%; border-radius: 8px; background-image: linear-gradient(45deg, #334155 25%, transparent 25%), linear-gradient(-45deg, #334155 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #334155 75%), linear-gradient(-45deg, transparent 75%, #334155 75%); background-size: 20px 20px; background-position: 0 0, 0 10px, 10px -10px, -10px 0px; }
     .btn { background: #38bdf8; color: #0f172a; border: none; padding: 12px 20px; border-radius: 6px; font-weight: bold; cursor: pointer; margin-top: 15px; width: 100%; text-decoration: none; display: inline-block; }
     .btn:hover { background: #7dd3fc; }
   </style>
-
-  <!-- Carga del motor de IA WebAssembly -->
-  <script src="https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.4.5/dist/index.umd.js"></script>
 </head>
 <body>
 
   <div class="card">
-    <h2>Eliminador de Fondo (IA Local)</h2>
+    <h2>Eliminador de Fondo</h2>
     <div class="dropzone" id="dropzone">
       <span id="label">Haz clic o arrastra tu imagen aquí</span>
       <input type="file" id="fileInput" accept="image/*" />
     </div>
 
-    <div id="status">Selecciona una imagen en formato JPG, PNG o WebP.</div>
+    <div id="status">Cargando motor de IA... (Espera unos segundos)</div>
 
     <div class="result" id="resultContainer">
-      <img id="outputImg" alt="Imagen procesada sin fondo" />
+      <canvas id="outputCanvas"></canvas>
       <a id="downloadBtn" class="btn" download="sin_fondo.png">Descargar PNG Transparente</a>
     </div>
   </div>
 
-  <script>
+  <script type="module">
+    import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.6.0';
+
+    // Desactivar búsqueda de modelos locales para evitar fallos CORS
+    env.allowLocalModels = false;
+    env.useBrowserCache = true;
+
     const dropzone = document.getElementById('dropzone');
     const fileInput = document.getElementById('fileInput');
     const status = document.getElementById('status');
     const resultContainer = document.getElementById('resultContainer');
-    const outputImg = document.getElementById('outputImg');
+    const outputCanvas = document.getElementById('outputCanvas');
     const downloadBtn = document.getElementById('downloadBtn');
+
+    let segmenter = null;
+
+    // Inicializar el modelo
+    async function init() {
+      try {
+        status.innerText = "Cargando modelo de IA (RMBG)...";
+        segmenter = await pipeline('image-segmentation', 'Xenova/birefnet-general', {
+          quantized: true,
+        });
+        status.innerText = "¡IA Lista! Selecciona una imagen.";
+        status.style.color = "#10b981";
+      } catch (e) {
+        console.warn("Fallo al cargar BiRefNet, intentando modelo liviano secundario...", e);
+        try {
+          segmenter = await pipeline('image-segmentation', 'Xenova/rmbg-1.4');
+          status.innerText = "¡IA Lista! Selecciona una imagen.";
+          status.style.color = "#10b981";
+        } catch (err2) {
+          console.error("Error crítico:", err2);
+          status.innerText = "Error al cargar la IA. Revisa tu conexión a internet.";
+          status.style.color = "#ef4444";
+        }
+      }
+    }
+
+    init();
 
     dropzone.addEventListener('click', () => fileInput.click());
     fileInput.addEventListener('change', (e) => processImage(e.target.files[0]));
@@ -56,34 +86,51 @@
 
     async function processImage(file) {
       if (!file) return;
+      if (!segmenter) {
+        alert("La IA aún se está cargando, espera unos segundos por favor.");
+        return;
+      }
 
-      status.innerText = "Procesando en tu navegador... (puede tardar unos segundos la primera vez)";
+      status.innerText = "Procesando imagen...";
       status.style.color = "#f59e0b";
       resultContainer.style.display = "none";
 
       try {
-        // Ejecución directa del motor local indicando la ruta pública exacta de los recursos
-        const blob = await imglyRemoveBackground(file, {
-          publicPath: "https://cdn.jsdelivr.net/npm/@imgly/background-removal-data@1.4.5/dist/",
-          progress: (key, current, total) => {
-            if (total > 0) {
-              const percent = Math.round((current / total) * 100);
-              status.innerText = `Cargando motor de IA: ${percent}%`;
-            }
+        const imgUrl = URL.createObjectURL(file);
+        
+        // Ejecutar segmentación de fondo
+        const output = await segmenter(imgUrl);
+        const mask = output[0].mask;
+
+        const img = new Image();
+        img.onload = () => {
+          outputCanvas.width = img.width;
+          outputCanvas.height = img.height;
+          const ctx = outputCanvas.getContext('2d');
+          
+          // Dibujar la imagen original
+          ctx.drawImage(img, 0, 0);
+          const imgData = ctx.getImageData(0, 0, img.width, img.height);
+          
+          // Aplicar la máscara de transparencia
+          for (let i = 0; i < mask.data.length; i++) {
+            imgData.data[i * 4 + 3] = mask.data[i];
           }
-        });
+          
+          ctx.putImageData(imgData, 0, 0);
 
-        const imageObjectURL = URL.createObjectURL(blob);
-        outputImg.src = imageObjectURL;
-        downloadBtn.href = imageObjectURL;
+          const finalDataUrl = outputCanvas.toDataURL('image/png');
+          downloadBtn.href = finalDataUrl;
 
-        status.innerText = "¡Fondo eliminado correctamente!";
-        status.style.color = "#10b981";
-        resultContainer.style.display = "block";
+          status.innerText = "¡Fondo eliminado correctamente!";
+          status.style.color = "#10b981";
+          resultContainer.style.display = "block";
+        };
+        img.src = imgUrl;
 
       } catch (error) {
         console.error("Error al procesar:", error);
-        status.innerText = "Error al procesar. Asegúrate de ejecutar este archivo desde un servidor web local (Live Server) o en Vercel/GitHub Pages.";
+        status.innerText = "Error al procesar la imagen.";
         status.style.color = "#ef4444";
       }
     }
