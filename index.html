@@ -3,67 +3,48 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Eliminador de Fondo</title>
+  <title>Eliminador de Fondo Gratis</title>
   <style>
-    * { box-sizing: border-box; font-family: sans-serif; }
+    * { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
     body { background: #121212; color: #fff; display: flex; flex-direction: column; align-items: center; padding: 20px; margin: 0; min-height: 100vh; }
-    .container { width: 100%; max-width: 600px; text-align: center; margin-top: 40px; }
-    .dropzone { border: 2px dashed #444; border-radius: 8px; padding: 40px 20px; cursor: pointer; background: #1e1e1e; }
-    .dropzone:hover { border-color: #888; }
+    .container { width: 100%; max-width: 500px; text-align: center; margin-top: 40px; }
+    .dropzone { border: 2px dashed #444; border-radius: 12px; padding: 40px 20px; cursor: pointer; background: #1e1e1e; transition: 0.2s; }
+    .dropzone:hover { border-color: #0066cc; background: #252525; }
     input[type="file"] { display: none; }
-    #status { margin: 20px 0; font-size: 14px; color: #aaa; }
+    #status { margin: 20px 0; font-size: 15px; color: #4caf50; font-weight: 500; }
     .result { display: none; margin-top: 20px; }
-    canvas { max-width: 100%; border-radius: 8px; background: repeating-conic-gradient(#808080 0% 25%, #fff 0% 50%) 50% / 16px 16px; }
-    .btn { display: inline-block; background: #0066cc; color: #fff; border: none; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: bold; margin-top: 15px; cursor: pointer; }
+    img.output { max-width: 100%; border-radius: 8px; background: repeating-conic-gradient(#808080 0% 25%, #fff 0% 50%) 50% / 16px 16px; }
+    .btn { display: inline-block; background: #0066cc; color: #fff; border: none; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: bold; margin-top: 15px; cursor: pointer; width: 100%; }
     .btn:hover { background: #0052a3; }
   </style>
+  <script src="https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.4.5/dist/index.umd.js"></script>
 </head>
 <body>
 
   <div class="container">
+    <h2>Quitar Fondo Gratis</h2>
+    
     <div class="dropzone" id="dropzone">
       <span id="label">Haz clic o arrastra tu imagen aquí</span>
       <input type="file" id="fileInput" accept="image/*" />
     </div>
 
-    <div id="status">Cargando modelo de IA...</div>
+    <div id="status">Sistema listo. Selecciona una imagen.</div>
 
     <div class="result" id="resultContainer">
-      <canvas id="canvas"></canvas>
+      <img id="outputImg" class="output" alt="Resultado" />
       <br />
-      <a id="downloadBtn" class="btn" download="sin_fondo.png">Descargar PNG</a>
+      <a id="downloadBtn" class="btn" download="sin_fondo.png">Descargar PNG Transparente</a>
     </div>
   </div>
 
-  <script type="module">
-    import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2';
-
-    // Desactivar hilos locales para evitar bloqueos del navegador
-    env.allowLocalModels = false;
-    env.backends.onnx.wasm.numThreads = 1;
-
+  <script>
     const status = document.getElementById('status');
     const dropzone = document.getElementById('dropzone');
     const fileInput = document.getElementById('fileInput');
     const resultContainer = document.getElementById('resultContainer');
-    const canvas = document.getElementById('canvas');
+    const outputImg = document.getElementById('outputImg');
     const downloadBtn = document.getElementById('downloadBtn');
-
-    let pipe = null;
-
-    async function init() {
-      try {
-        // Modelo estable optimizado para navegadores
-        pipe = await pipeline('image-segmentation', 'Xenova/bgr-small');
-        status.innerText = '¡IA Lista! Selecciona una imagen.';
-        status.style.color = '#4caf50';
-      } catch (e) {
-        console.error(e);
-        status.innerText = 'Error al cargar el modelo. Verifica tu conexión a internet o bloqueador de anuncios.';
-        status.style.color = '#f44336';
-      }
-    }
-    init();
 
     dropzone.addEventListener('click', () => fileInput.click());
     fileInput.addEventListener('change', (e) => process(e.target.files[0]));
@@ -74,35 +55,28 @@
     });
 
     async function process(file) {
-      if (!file || !pipe) return;
+      if (!file) return;
 
-      status.innerText = 'Procesando imagen...';
-      status.style.color = '#aaa';
+      status.innerText = 'Procesando imagen (esto toma unos segundos)...';
+      status.style.color = '#ff9800';
       resultContainer.style.display = 'none';
 
-      const url = URL.createObjectURL(file);
-      const output = await pipe(url);
-      const mask = output[0].mask;
+      try {
+        // Remoción de fondo usando @imgly/background-removal
+        const blob = await imglyRemoveBackground(file);
+        const url = URL.createObjectURL(blob);
 
-      const img = new Image();
-      img.onload = () => {
-        canvas.width = img.width;
-        canvas.height = img.height;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0);
+        outputImg.src = url;
+        downloadBtn.href = url;
 
-        const imgData = ctx.getImageData(0, 0, img.width, img.height);
-        for (let i = 0; i < mask.data.length; i++) {
-          imgData.data[i * 4 + 3] = mask.data[i];
-        }
-        ctx.putImageData(imgData, 0, 0);
-
-        downloadBtn.href = canvas.toDataURL('image/png');
-        status.innerText = '¡Fondo eliminado!';
+        status.innerText = '¡Fondo eliminado con éxito!';
         status.style.color = '#4caf50';
         resultContainer.style.display = 'block';
-      };
-      img.src = url;
+      } catch (error) {
+        console.error(error);
+        status.innerText = 'Error al procesar la imagen. Intenta con otra foto.';
+        status.style.color = '#f44336';
+      }
     }
   </script>
 </body>
